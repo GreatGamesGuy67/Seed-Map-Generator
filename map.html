@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>6-Pass Square Procedural World Generator (128x128)</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a1a1a;
+            color: #ffffff;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 {
+            margin-bottom: 5px;
+        }
+        p {
+            margin-top: 0;
+            color: #aaa;
+            font-size: 14px;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+            max-width: 1200px;
+            width: 100%;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .control-panel {
+            background-color: #2a2a2a;
+            padding: 20px;
+            border-radius: 8px;
+            min-width: 280px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        .seed-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .seed-group label {
+            font-weight: bold;
+            font-size: 14px;
+        }
+        .seed-group input {
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #444;
+            background-color: #1a1a1a;
+            color: #fff;
+            font-size: 14px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .view-toggle {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .view-toggle h3 {
+            margin: 8px 0 4px 0;
+            font-size: 16px;
+            border-bottom: 1px solid #444;
+            padding-bottom: 4px;
+        }
+        label.radio-label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .canvas-container {
+            position: relative;
+            background-color: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        canvas {
+            display: block;
+            image-rendering: pixelated;
+        }
+        .legend {
+            margin-top: 15px;
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 8px;
+            width: 100%;
+            max-width: 600px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        .legend-title {
+            font-weight: bold;
+            margin-bottom: 8px;
+            border-bottom: 1px solid #444;
+            padding-bottom: 4px;
+        }
+        .legend-items {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+        .color-box {
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+            border: 1px solid #555;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>6-Pass Advanced World Generator</h1>
+    <p>128x128 Grid • Continental Clusters • Moisture Maps • Structure Sweep</p>
+
+    <div class="container">
+        <!-- Control Panel Layout -->
+        <div class="control-panel">
+            <div class="seed-group">
+                <label for="seedInput">World Gen Seed:</label>
+                <input type="text" id="seedInput" placeholder="Leave empty for thermal calculation fallback...">
+            </div>
+            
+            <button id="generateBtn">Generate New World</button>
+            
+            <div class="view-toggle">
+                <h3>View Pass Layer</h3>
+                <label class="radio-label"><input type="radio" name="passView" value="1"> Pass 1: Land Clusters</label>
+                <label class="radio-label"><input type="radio" name="passView" value="2"> Pass 2: Elevation</label>
+                <label class="radio-label"><input type="radio" name="passView" value="3"> Pass 3: Water Level</label>
+                <label class="radio-label"><input type="radio" name="passView" value="4"> Pass 4: Moisture Matrix</label>
+                <label class="radio-label"><input type="radio" name="passView" value="5"> Pass 5: Greenery</label>
+                <label class="radio-label"><input type="radio" name="passView" value="6"> Pass 6: Caves</label>
+                <label class="radio-label"><input type="radio" name="passView" value="7"> Pass 7: Structure Sweep</label>
+                <label class="radio-label"><input type="radio" name="passView" value="final" checked> Final Combined Map</label>
+            </div>
+        </div>
+
+        <!-- Canvas Frame Map View -->
+        <div class="canvas-container">
+            <canvas id="worldCanvas" width="512" height="512"></canvas>
+        </div>
+    </div>
+
+    <!-- Biome Graph Legend -->
+    <div class="legend">
+        <div class="legend-title">Biomes & Features Legend</div>
+        <div class="legend-items">
+            <div class="legend-item"><div class="color-box" style="background: #0d1b2a;"></div> Deep Ocean</div>
+            <div class="legend-item"><div class="color-box" style="background: #1d3557;"></div> Shallow Water</div>
+            <div class="legend-item"><div class="color-box" style="background: #e9c46a;"></div> Desert / Dry Sand</div>
+            <div class="legend-item"><div class="color-box" style="background: #90a955;"></div> Arid Plains / Savanna</div>
+            <div class="legend-item"><div class="color-box" style="background: #31572c;"></div> Lush / Dense Forest</div>
+            <div class="legend-item"><div class="color-box" style="background: #4f5d75;"></div> Rocky Mountains</div>
+            <div class="legend-item"><div class="color-box" style="background: #ffffff;"></div> Snowy Peaks</div>
+            <div class="legend-item"><div class="color-box" style="background: #d62828;"></div> Cave Openings</div>
+            <div class="legend-item" style="grid-column: span 2;"><div class="color-box" style="background: #ffaa00; border: 1px solid #fff;"></div> 🏛️ Manmade Structures (Villages / Ruins / Outposts)</div>
+        </div>
+    </div>
+    <script>
+        const canvas = document.getElementById('worldCanvas');
+        const ctx = canvas.getContext('2d');
+        const generateBtn = document.getElementById('generateBtn');
+        const seedInput = document.getElementById('seedInput');
+        const radioButtons = document.querySelectorAll('input[name="passView"]');
+
+        // Target Matrix Canvas Constraints
+        const GRID_SIZE = 128; 
+        const PIXEL_SIZE = canvas.width / GRID_SIZE; 
+
+        // Multi-pass structural map array data storage
+        let maps = {
+            pass1: [], // Land Clusters
+            pass2: [], // Elevation
+            pass3: [], // Water Level
+            pass4: [], // Moisture Matrix
+            pass5: [], // Greenery
+            pass6: [], // Cave
+            pass7: []  // Manmade Structures
+        };
+
+        // Core tracking values running your custom mathematical engine
+        let X_seed = 54321;
+        let activeWorldSeed = 0;
+
+        // Custom Seed Engine: Evaluates plain text entry or drops back onto device hardware timing benchmarks
+        function calculateActiveSeed() {
+            const rawVal = seedInput.value.trim();
+            
+            if (rawVal !== "") {
+                let calculatedHash = 0;
+                for (let i = 0; i < rawVal.length; i++) {
+                    calculatedHash = (calculatedHash << 5) - calculatedHash + rawVal.charCodeAt(i);
+                    calculatedHash |= 0;
+                }
+                return Math.abs(calculatedHash) % 10000; // Capped to prevent number explosion
+            } else {
+                let cpuCores = navigator.hardwareConcurrency || 4;
+                let thermalJitter = 0;
+                
+                for (let i = 0; i < 10000; i++) {
+                    thermalJitter += Math.sqrt(Math.sin(i) * Math.cos(i));
+                }
+                
+                let highResClock = performance.now();
+                return Math.floor((highResClock * cpuCores) + Math.abs(thermalJitter)) % 5000;
+            }
+        }
+
+        // Custom Generator Framework using your exact update equation layout with safety boundaries
+        function customRandom() {
+            let t = performance.now() * 0.001; 
+            let insideBrackets = 291839 + Math.sin(t) + (X_seed % 29394) + Math.round(t);
+            
+            // Base generation formula phase
+            let baseFormula = ((2.7748923 + t) * insideBrackets) % 29395;
+            
+            // Safe execution variant of your exact extension: * (seed - 6482 + time)
+            let modifier = activeWorldSeed - 6482 + t;
+            
+            // Using absolute floating-point reductions to block browser overflow freezes
+            let rawOutput = (baseFormula * (modifier % 10000)) % 29395;
+            
+            // Bounds clamping configuration modifier
+            X_seed = Math.abs(rawOutput);
+            if (isNaN(X_seed) || X_seed === 0) X_seed = (baseFormula + 1) % 29395;
+            
+            return X_seed / 29395;
+        }
+
+        // Initialize empty sub-matrix data spaces
+        function createEmptyGrid() {
+            let grid = [];
+            for (let y = 0; y < GRID_SIZE; y++) {
+                grid.push(new Float32Array(GRID_SIZE));
+            }
+            return grid;
+        }
+
+        // Layer Pipeline Module: Distributes 45 layered matrix square shapes
+        function generatePassLayer(sizeMin, sizeMax, blurIterations = 3) {
+            let grid = createEmptyGrid();
+
+            for (let i = 0; i < 45; i++) {
+                let cx = Math.floor(customRandom() * GRID_SIZE);
+                let cy = Math.floor(customRandom() * GRID_SIZE);
+                
+                let squareWidth = Math.floor(customRandom() * (sizeMax - sizeMin)) + sizeMin;
+                let squareHeight = Math.floor(customRandom() * (sizeMax - sizeMin)) + sizeMin;
+                
+                let value = customRandom();
+
+                let halfW = Math.floor(squareWidth / 2);
+                let halfH = Math.floor(squareHeight / 2);
+
+                for (let y = cy - halfH; y <= cy + halfH; y++) {
+                    for (let x = cx - halfW; x <= cx + halfW; x++) {
+                        if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
+                            grid[y][x] += value; 
+                        }
+                    }
+                }
+            }
+
+            return smoothGrid(grid, blurIterations); 
+        }
+
+        // Box Blur Matrix Smoothing Algorithm
+        function smoothGrid(grid, iterations) {
+            let currentGrid = grid;
+            
+            for (let iter = 0; iter < iterations; iter++) {
+                let tempGrid = createEmptyGrid();
+                for (let y = 0; y < GRID_SIZE; y++) {
+                    for (let x = 0; x < GRID_SIZE; x++) {
+                        let sum = 0;
+                        let count = 0;
+                        for (let ny = y - 1; ny <= y + 1; ny++) {
+                            for (let nx = x - 1; nx <= x + 1; nx++) {
+                                if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE) {
+                                    sum += currentGrid[ny][nx];
+                                    count++;
+                                }
+                            }
+                        }
+                        tempGrid[y][x] = sum / count;
+                    }
+                }
+                currentGrid = tempGrid;
+            }
+            
+            let max = 0.0001;
+            for (let y = 0; y < GRID_SIZE; y++) {
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    if (currentGrid[y][x] > max) max = currentGrid[y][x];
+                }
+            }
+            for (let y = 0; y < GRID_SIZE; y++) {
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    currentGrid[y][x] /= max;
+                }
+            }
+            
+            return currentGrid;
+        }
+        // Structural Sweeper Function: Places 45 crisp building blocks over clean plains
+        function generateStructureSweep() {
+            let grid = createEmptyGrid();
+            let attempts = 0;
+            let placed = 0;
+            
+            while (placed < 45 && attempts < 1000) {
+                attempts++;
+                let sx = Math.floor(customRandom() * GRID_SIZE);
+                let sy = Math.floor(customRandom() * GRID_SIZE);
+                
+                let baseStructure = maps.pass1[sy][sx];
+                let heightMap = (baseStructure * 0.4) + (maps.pass2[sy][sx] * 0.6);
+                let finalHeight = heightMap - (maps.pass3[sy][sx] * 0.25);
+                
+                if (finalHeight >= 0.35 && finalHeight <= 0.68) {
+                    let size = Math.floor(customRandom() * 2) + 1; 
+                    for (let dy = -size; dy <= size; dy++) {
+                        for (let dx = -size; dx <= size; dx++) {
+                            let tx = sx + dx;
+                            let ty = sy + dy;
+                            if (tx >= 0 && tx < GRID_SIZE && ty >= 0 && ty < GRID_SIZE) {
+                                grid[ty][tx] = 1.0; 
+                            }
+                        }
+                    }
+                    placed++;
+                }
+            }
+            return grid;
+        }
+
+        // Core Generation pipeline management system 
+        function generateCompleteWorld() {
+            activeWorldSeed = calculateActiveSeed();
+            X_seed = 54321; 
+
+            // Pass 1: Land Clusters (Massive continental core square formations)
+            maps.pass1 = generatePassLayer(35, 60, 4);
+            // Pass 2: Elevation (Tectonic mountain layers)
+            maps.pass2 = generatePassLayer(10, 22, 3);
+            // Pass 3: Water Level (Erosion channels & seas)
+            maps.pass3 = generatePassLayer(12, 26, 3);
+            // Pass 4: Moisture Matrix (Climate configuration grids)
+            maps.pass4 = generatePassLayer(20, 45, 4);
+            // Pass 5: Greenery Adding (Flora variance density)
+            maps.pass5 = generatePassLayer(6, 12, 2);
+            // Pass 6: Caves (Subterranean structural holes)
+            maps.pass6 = generatePassLayer(3, 7, 1);
+            // Pass 7: Manmade Structure Sweep (Context-aware structures)
+            maps.pass7 = generateStructureSweep();
+
+            render();
+        }
+
+        // Comprehensive Canvas Data Display Loops
+        function render() {
+            const currentView = document.querySelector('input[name="passView"]:checked').value;
+            
+            for (let y = 0; y < GRID_SIZE; y++) {
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    let color = "#000000";
+
+                    if (currentView === "final") {
+                        let baseStructure = maps.pass1[y][x];
+                        let heightMap = (baseStructure * 0.4) + (maps.pass2[y][x] * 0.6);
+                        let finalHeight = heightMap - (maps.pass3[y][x] * 0.25);
+                        
+                        let moisture = maps.pass4[y][x];
+                        let greenery = maps.pass5[y][x];
+                        let caveSystem = maps.pass6[y][x];
+                        let isStructure = maps.pass7[y][x];
+
+                        // Evaluate landscape coordinates using combined multi-layer math arrays
+                        if (finalHeight < 0.15) {
+                            color = "#0d1b2a"; 
+                        } else if (finalHeight < 0.3) {
+                            color = "#1d3557"; 
+                        } else if (finalHeight < 0.35) {
+                            color = "#e9c46a"; 
+                        } else if (finalHeight < 0.68) {
+                            if (moisture < 0.3) {
+                                color = "#e9c46a"; 
+                            } else if (moisture < 0.55) {
+                                color = "#90a955"; 
+                            } else {
+                                color = (greenery > 0.45) ? "#31572c" : "#4f772d"; 
+                            }
+                        } else if (finalHeight < 0.82) {
+                            color = "#4f5d75"; 
+                        } else {
+                            color = "#ffffff"; 
+                        }
+
+                        // Layer Cave cut-outs over land masses
+                        if (finalHeight >= 0.35 && finalHeight < 0.82 && caveSystem > 0.82) {
+                            color = "#d62828"; 
+                        }
+
+                        // Layer structure markers over flat biomes
+                        if (isStructure > 0) {
+                            color = "#ffaa00"; 
+                        }
+
+                    } else {
+                        // Greyscale debugging view configuration module
+                        let val = 0;
+                        if (currentView === "1") val = maps.pass1[y][x];
+                        if (currentView === "2") val = maps.pass2[y][x];
+                        if (currentView === "3") val = maps.pass3[y][x];
+                        if (currentView === "4") val = maps.pass4[y][x];
+                        if (currentView === "5") val = maps.pass5[y][x];
+                        if (currentView === "6") val = maps.pass6[y][x];
+                        if (currentView === "7") val = maps.pass7[y][x];
+                        
+                        let c = Math.floor(val * 255);
+                        color = `rgb(${c}, ${c}, ${c})`;
+                    }
+
+                    ctx.fillStyle = color;
+                    ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+                }
+            }
+        }
+
+        generateBtn.addEventListener('click', generateCompleteWorld);
+        radioButtons.forEach(radio => radio.addEventListener('change', render));
+
+        // Automatic engine kickstart cycle
+        generateCompleteWorld();
+    </script>
+</body>
+</html>
